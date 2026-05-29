@@ -1,0 +1,11 @@
+{
+  "name": "bk2ak-dashboard",
+  "version": "1.0.0",
+  "description": "BK2AK photo voting and Instagram planning dashboard",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  }
+}
