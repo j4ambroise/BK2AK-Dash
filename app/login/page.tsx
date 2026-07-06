@@ -26,7 +26,7 @@ export default function LoginPage() {
       options: { emailRedirectTo: `${window.location.origin}/` },
     })
     setSubmitting(false)
-    if (error) setError('This email hasn't been added to the portal yet. Ask James to add you.')
+    if (error) setError("This email hasn't been added to the portal yet. Ask James to add you.")
     else setSent(true)
   }
 
