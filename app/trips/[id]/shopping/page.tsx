@@ -3,12 +3,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Trip, MenuItem, ShoppingItem, MEAL_LABELS } from '@/lib/types'
+import { Trip, MenuItem, ShoppingItem } from '@/lib/types'
 import { ArrowLeft, Printer, Users, Calendar, ShoppingCart } from 'lucide-react'
 
 const VENDOR_ORDER = ['Costco', 'Fred Meyer', 'PoHo', 'Other', '']
-
-type GroupMode = 'vendor' | 'shop'
 
 function normalizeKey(name: string, unit: string) {
   return `${name.trim().toLowerCase()}__${unit.trim().toLowerCase()}`
@@ -23,9 +21,8 @@ export default function ShoppingPage() {
   const { id } = useParams<{ id: string }>()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
-  const [assignments, setAssignments] = useState<Record<string, number>>({}) // key → shop#
+  const [assignments, setAssignments] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
-  const [groupBy, setGroupBy] = useState<GroupMode>('vendor')
 
   const load = useCallback(async () => {
     const [tripRes, menuRes, assignRes] = await Promise.all([
@@ -54,9 +51,9 @@ export default function ShoppingPage() {
     )
   }
 
-  function buildShoppingList(): ShoppingItem[] {
+  function buildShoppingList() {
     if (!trip) return []
-    const itemMap = new Map<string, ShoppingItem>()
+    const itemMap = new Map<string, ShoppingItem & { _key: string }>()
 
     for (const menuItem of menuItems) {
       const recipe = menuItem.recipe as (typeof menuItem.recipe & { recipe_ingredients?: { name: string; quantity: number; unit: string; vendor?: string; shopping_note?: string }[] }) | undefined
@@ -71,6 +68,7 @@ export default function ShoppingPage() {
           if (!existing.recipes.includes(recipe.name)) existing.recipes.push(recipe.name)
         } else {
           itemMap.set(key, {
+            _key: key,
             name: displayName(ing.name),
             total_qty: ing.quantity * scale,
             unit: ing.unit.trim(),
@@ -81,7 +79,7 @@ export default function ShoppingPage() {
         }
       }
     }
-    return Array.from(itemMap.entries()).map(([key, item]) => ({ ...item, _key: key } as ShoppingItem & { _key: string }))
+    return Array.from(itemMap.values())
   }
 
   function formatQty(qty: number): string {
@@ -89,33 +87,18 @@ export default function ShoppingPage() {
     return rounded % 1 === 0 ? rounded.toString() : rounded.toFixed(2).replace(/\.?0+$/, '')
   }
 
-  const shoppingList = buildShoppingList() as (ShoppingItem & { _key: string })[]
+  const shoppingList = buildShoppingList()
   const multiShop = (trip?.num_shopping_trips ?? 1) > 1
   const shopCount = trip?.num_shopping_trips ?? 1
 
-  function groupedByVendor() {
-    const groups = new Map<string, (ShoppingItem & { _key: string })[]>()
-    for (const vendor of VENDOR_ORDER) {
-      const items = shoppingList.filter(i => (i.vendor || '') === vendor)
-      if (items.length > 0) groups.set(vendor || 'No Vendor', items.sort((a, b) => a.name.localeCompare(b.name)))
-    }
-    return groups
+  // Always group by vendor
+  const groups = new Map<string, (ShoppingItem & { _key: string })[]>()
+  for (const vendor of VENDOR_ORDER) {
+    const items = shoppingList
+      .filter(i => (i.vendor || '') === vendor)
+      .sort((a, b) => a.name.localeCompare(b.name))
+    if (items.length > 0) groups.set(vendor || 'No Vendor', items)
   }
-
-  function groupedByShop() {
-    const groups = new Map<string, (ShoppingItem & { _key: string })[]>()
-    for (let s = 1; s <= shopCount; s++) {
-      const label = `Shop Run ${s}`
-      const items = shoppingList.filter(i => (assignments[i._key] ?? 1) === s)
-      if (items.length > 0) groups.set(label, items.sort((a, b) => a.name.localeCompare(b.name)))
-    }
-    // Unassigned (shouldn't happen but just in case)
-    const unassigned = shoppingList.filter(i => (assignments[i._key] ?? 1) > shopCount)
-    if (unassigned.length > 0) groups.set('Unassigned', unassigned)
-    return groups
-  }
-
-  const groups = groupBy === 'vendor' ? groupedByVendor() : groupedByShop()
 
   if (loading) return <div className="text-center py-16 text-stone-400">Loading...</div>
   if (!trip) return <div className="text-center py-16 text-stone-400">Trip not found.</div>
@@ -156,24 +139,6 @@ export default function ShoppingPage() {
         <div className="text-sm text-stone-500">
           {shoppingList.length} items · {menuItems.length} meals planned
         </div>
-      </div>
-
-      {/* Group by selector */}
-      <div className="flex gap-2 mb-5 print:hidden">
-        <button
-          onClick={() => setGroupBy('vendor')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${groupBy === 'vendor' ? 'bg-forest-700 text-white' : 'bg-white border border-stone-200 text-stone-600'}`}
-        >
-          By Vendor
-        </button>
-        {multiShop && (
-          <button
-            onClick={() => setGroupBy('shop')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${groupBy === 'shop' ? 'bg-forest-700 text-white' : 'bg-white border border-stone-200 text-stone-600'}`}
-          >
-            By Shop Run
-          </button>
-        )}
       </div>
 
       {shoppingList.length === 0 ? (
