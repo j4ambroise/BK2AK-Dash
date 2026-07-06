@@ -80,7 +80,10 @@ export async function POST(req: NextRequest) {
     if (!res.ok) return NextResponse.json({ error: `Could not fetch that page (${res.status})` }, { status: 400 })
 
     const html = await res.text()
-    const blocks = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
+    const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    const blocks: RegExpExecArray[] = []
+    let m: RegExpExecArray | null
+    while ((m = re.exec(html)) !== null) blocks.push(m)
 
     let recipe: Record<string, unknown> | null = null
     for (const block of blocks) {
