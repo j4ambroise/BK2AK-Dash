@@ -1,16 +1,18 @@
 'use client'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, Fragment } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Trip, Recipe, MenuItem, MealType, MEAL_TYPES, MEAL_LABELS } from '@/lib/types'
-import { ArrowLeft, ShoppingCart, Plus, X, Search, ClipboardList, ChevronDown, ChevronUp, Download } from 'lucide-react'
+import { Trip, Recipe, MenuItem, ItineraryItem, MealType, MEAL_TYPES, MEAL_LABELS } from '@/lib/types'
+import { ArrowLeft, ShoppingCart, Plus, X, Search, ClipboardList, ChevronDown, ChevronUp, Download, Map as MapIcon } from 'lucide-react'
+import TripStepper from '@/components/TripStepper'
 
 export default function MenuPage() {
   const { id } = useParams<{ id: string }>()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [itinerary, setItinerary] = useState<ItineraryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showSummary, setShowSummary] = useState(false)
 
@@ -25,14 +27,16 @@ export default function MenuPage() {
   const noteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const load = useCallback(async () => {
-    const [tripRes, menuRes, recipesRes] = await Promise.all([
+    const [tripRes, menuRes, recipesRes, itinRes] = await Promise.all([
       supabase.from('trips').select('*').eq('id', id).single(),
       supabase.from('menu_items').select('*, recipe:recipes(*)').eq('trip_id', id),
       supabase.from('recipes').select('*').order('meal_type').order('name'),
+      supabase.from('itinerary_items').select('*').eq('trip_id', id).order('day_number').order('sort_order'),
     ])
     setTrip(tripRes.data)
     const items: MenuItem[] = menuRes.data ?? []
     setMenuItems(items)
+    setItinerary(itinRes.data ?? [])
     // Seed notes state from DB
     const n: Record<string, string> = {}
     for (const item of items) n[item.id] = item.notes ?? ''
@@ -57,6 +61,12 @@ export default function MenuPage() {
 
   function getCell(day: number, meal: MealType): MenuItem[] {
     return menuItems.filter(m => m.day_number === day && m.meal_type === meal)
+  }
+
+  function getDayActivities(day: number): ItineraryItem[] {
+    return itinerary
+      .filter(i => i.day_number === day && i.activity.trim())
+      .sort((a, b) => a.sort_order - b.sort_order)
   }
 
   async function addRecipe(day: number, meal: MealType, recipe: Recipe) {
@@ -158,6 +168,10 @@ export default function MenuPage() {
         </div>
       </div>
 
+      <div className="mb-6">
+        <TripStepper tripId={id} current="menu" />
+      </div>
+
       {/* Menu grid */}
       <div className="overflow-x-auto -mx-4 sm:mx-0">
         <div className="min-w-[700px] px-4 sm:px-0">
@@ -173,8 +187,32 @@ export default function MenuPage() {
               </tr>
             </thead>
             <tbody>
-              {days.map(day => (
-                <tr key={day} className="border-t border-stone-100">
+              {days.map(day => {
+                const dayActivities = getDayActivities(day)
+                return (
+                <Fragment key={day}>
+                <tr>
+                  <td colSpan={1 + activeMealTypes.length} className="pt-3 pb-1 px-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-forest-600 uppercase tracking-wide">
+                        <MapIcon className="w-3 h-3" /> Day {day}
+                      </span>
+                      {dayActivities.length === 0 ? (
+                        <Link href={`/trips/${id}/itinerary`} className="text-xs text-stone-300 italic hover:text-forest-600">
+                          + add activities in Itinerary
+                        </Link>
+                      ) : (
+                        dayActivities.map(a => (
+                          <span key={a.id} className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-800 rounded-full px-2 py-0.5">
+                            {a.time_label && <span className="font-semibold text-amber-500">{a.time_label}</span>}
+                            {a.activity}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                <tr className="border-t border-stone-100">
                   <td className="py-2 pl-2 align-top">
                     <span className="inline-flex items-center justify-center w-8 h-8 bg-forest-100 text-forest-700 rounded-full text-sm font-bold">
                       {day}
@@ -276,7 +314,9 @@ export default function MenuPage() {
                     )
                   })}
                 </tr>
-              ))}
+                </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -290,6 +330,16 @@ export default function MenuPage() {
           </Link>
         </div>
       )}
+
+      {/* Step navigation */}
+      <div className="mt-8 flex items-center justify-between print:hidden">
+        <Link href={`/trips/${id}/itinerary`} className="btn-ghost flex items-center gap-1.5">
+          <ArrowLeft className="w-4 h-4" /> Back: Itinerary
+        </Link>
+        <Link href={`/trips/${id}/shopping`} className="btn-primary flex items-center gap-2">
+          Next: Shopping List <ShoppingCart className="w-4 h-4" />
+        </Link>
+      </div>
 
       {/* Trip Summary Modal */}
       {showSummary && (

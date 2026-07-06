@@ -48,6 +48,20 @@ export interface Trip {
   created_at: string
 }
 
+export type TimeLabel = 'AM' | 'Midday' | 'PM' | 'Evening'
+
+export const TIME_LABELS: TimeLabel[] = ['AM', 'Midday', 'PM', 'Evening']
+
+export interface ItineraryItem {
+  id: string
+  trip_id: string
+  day_number: number
+  time_label?: string
+  activity: string
+  sort_order: number
+  created_at?: string
+}
+
 export interface MenuItem {
   id: string
   trip_id: string

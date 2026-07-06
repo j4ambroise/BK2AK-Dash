@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Trip, MenuItem, ShoppingItem } from '@/lib/types'
 import { ArrowLeft, Printer, Users, Calendar, ShoppingCart } from 'lucide-react'
+import TripStepper from '@/components/TripStepper'
 
 const VENDOR_ORDER = ['Costco', 'Fred Meyer', 'PoHo', 'Other', '']
 
@@ -139,6 +140,10 @@ export default function ShoppingPage() {
             <Printer className="w-4 h-4" /> Print
           </button>
         </div>
+      </div>
+
+      <div className="mb-6 print:hidden">
+        <TripStepper tripId={id} current="shopping" />
       </div>
 
       {/* Trip summary */}

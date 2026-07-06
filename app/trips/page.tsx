@@ -1,12 +1,14 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Trip } from '@/lib/types'
 import { Plus, Users, Calendar, Loader2, UtensilsCrossed, ShoppingCart, Map, Camera } from 'lucide-react'
 import AuthGuard from '@/components/AuthGuard'
 
 export default function TripsPage() {
+  const router = useRouter()
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -29,10 +31,11 @@ export default function TripsPage() {
       .insert({ name: form.name.trim(), num_people: form.num_people, num_days: form.num_days, num_shopping_trips: form.num_shopping_trips })
       .select()
       .single()
-    if (data) setTrips(prev => [data, ...prev])
-    setCreating(false)
-    setForm({ name: '', num_people: 12, num_days: 14, num_shopping_trips: 1 })
     setSaving(false)
+    if (data) {
+      // New trips start at step 1 of the flow: itinerary → meals → shopping
+      router.push(`/trips/${data.id}/itinerary`)
+    }
   }
 
   return (
@@ -109,14 +112,14 @@ export default function TripsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
-                <Link href={`/trips/${trip.id}/menu`} className="btn-primary flex items-center gap-1.5 text-sm px-3 py-1.5">
-                  <UtensilsCrossed className="w-3.5 h-3.5" /> Menu
+                <Link href={`/trips/${trip.id}/itinerary`} className="btn-primary flex items-center gap-1.5 text-sm px-3 py-1.5">
+                  <Map className="w-3.5 h-3.5" /> Itinerary
+                </Link>
+                <Link href={`/trips/${trip.id}/menu`} className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5">
+                  <UtensilsCrossed className="w-3.5 h-3.5" /> Meals
                 </Link>
                 <Link href={`/trips/${trip.id}/shopping`} className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5">
                   <ShoppingCart className="w-3.5 h-3.5" /> Shopping
-                </Link>
-                <Link href={`/trips/${trip.id}/itinerary`} className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5">
-                  <Map className="w-3.5 h-3.5" /> Itinerary
                 </Link>
                 <Link href={`/trips/${trip.id}/photos`} className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5">
                   <Camera className="w-3.5 h-3.5" /> Photos
