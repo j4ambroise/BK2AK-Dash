@@ -44,8 +44,45 @@ export interface Trip {
   num_days: number
   num_shopping_trips: number
   start_date?: string
+  end_date?: string
   trip_notes?: string
   created_at: string
+}
+
+// ---- Gear inventory ----
+export type GearItemType = 'gear' | 'supply'
+
+export const GEAR_CATEGORIES = ['Boats', 'River Safety', 'Apparel', 'Camping', 'Kitchen', 'Gear', 'Other']
+
+export interface GearVariant {
+  id: string
+  item_id: string
+  label: string
+  quantity: number
+  sort_order: number
+}
+
+export interface GearItem {
+  id: string
+  name: string
+  category: string
+  item_type: GearItemType
+  unit: string
+  always_pack: boolean
+  low_stock_threshold: number
+  notes?: string
+  sort_order: number
+  created_at?: string
+  gear_variants?: GearVariant[]
+}
+
+export interface GearReservation {
+  id: string
+  trip_id: string
+  variant_id: string
+  quantity: number
+  reserved_by?: string
+  created_at?: string
 }
 
 export type TimeLabel = 'AM' | 'Midday' | 'PM' | 'Evening'

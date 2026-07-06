@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { UtensilsCrossed, Camera, BookOpen, Map, LogOut, ChevronDown } from 'lucide-react'
+import { UtensilsCrossed, Camera, BookOpen, Map, Backpack, LogOut, ChevronDown } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 
 export default function Nav() {
@@ -28,6 +28,7 @@ export default function Nav() {
     { href: '/photos', label: 'Photos', icon: Camera },
     { href: '/recipes', label: 'Recipes', icon: BookOpen },
     { href: '/trips', label: 'Trips', icon: Map },
+    { href: '/gear', label: 'Gear', icon: Backpack },
   ]
 
   return (
