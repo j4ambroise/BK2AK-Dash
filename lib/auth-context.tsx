@@ -8,12 +8,14 @@ interface FakeUser {
 interface AuthContextType {
   user: FakeUser | null
   loading: boolean
+  signIn: (email: string) => void
   signOut: () => void
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  signIn: () => {},
   signOut: () => {},
 })
 
@@ -27,20 +29,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false)
   }, [])
 
+  function signIn(email: string) {
+    localStorage.setItem('bk2ak_user_email', email)
+    setUser({ email })
+  }
+
   function signOut() {
     localStorage.removeItem('bk2ak_user_email')
     setUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function signIn(email: string) {
-  localStorage.setItem('bk2ak_user_email', email)
 }
 
 export const useAuth = () => useContext(AuthContext)

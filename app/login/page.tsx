@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth, signIn } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 import { UtensilsCrossed } from 'lucide-react'
 
 const ALLOWED_EMAILS = [
@@ -10,7 +10,7 @@ const ALLOWED_EMAILS = [
 ]
 
 export default function LoginPage() {
-  const { user, loading } = useAuth()
+  const { user, loading, signIn } = useAuth()
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
