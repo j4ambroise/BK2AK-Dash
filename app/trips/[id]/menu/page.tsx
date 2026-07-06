@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Trip, Recipe, MenuItem, MealType, MEAL_TYPES, MEAL_LABELS } from '@/lib/types'
-import { ArrowLeft, ShoppingCart, Plus, X, Search, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, Plus, X, Search, ClipboardList, ChevronDown, ChevronUp, Download } from 'lucide-react'
 
 export default function MenuPage() {
   const { id } = useParams<{ id: string }>()
@@ -97,6 +97,22 @@ export default function MenuPage() {
     ? [...pickerRecipes.filter(r => r.meal_type === pickerCell.meal), ...pickerRecipes.filter(r => r.meal_type !== pickerCell.meal)]
     : pickerRecipes
 
+  async function downloadTripRecipes() {
+    const recipeIds = [...new Set(menuItems.map(m => m.recipe_id))]
+    const { data } = await supabase
+      .from('recipes')
+      .select('*, recipe_ingredients(*)')
+      .in('id', recipeIds)
+      .order('meal_type').order('name')
+    const blob = new Blob([JSON.stringify({ trip: trip?.name, recipes: data }, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${trip?.name ?? 'trip'}-recipes.json`.replace(/\s+/g, '-').toLowerCase()
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // Build summary: all items with notes, grouped by day
   const itemsWithNotes = menuItems.filter(m => notes[m.id]?.trim())
   const summaryByDay = Array.from(
@@ -127,6 +143,9 @@ export default function MenuPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <button onClick={downloadTripRecipes} className="btn-secondary flex items-center gap-1.5">
+            <Download className="w-4 h-4" /> Download
+          </button>
           <button
             onClick={() => setShowSummary(true)}
             className="btn-secondary flex items-center gap-1.5"

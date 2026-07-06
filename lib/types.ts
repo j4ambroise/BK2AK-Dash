@@ -78,6 +78,7 @@ export interface Photo {
   source?: string
   album?: string
   filename?: string
+  trip_id?: string
   trip_name?: string
   description?: string
   created_at: string

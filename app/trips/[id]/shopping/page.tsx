@@ -23,6 +23,7 @@ export default function ShoppingPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [assignments, setAssignments] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [groupByShop, setGroupByShop] = useState(false)
 
   const load = useCallback(async () => {
     const [tripRes, menuRes, assignRes] = await Promise.all([
@@ -91,13 +92,23 @@ export default function ShoppingPage() {
   const multiShop = (trip?.num_shopping_trips ?? 1) > 1
   const shopCount = trip?.num_shopping_trips ?? 1
 
-  // Always group by vendor
-  const groups = new Map<string, (ShoppingItem & { _key: string })[]>()
+  // Always group by vendor; optionally sub-group by shop run
+  type GroupEntry = { label: string; shopNum?: number; items: (ShoppingItem & { _key: string })[] }
+  const groupEntries: GroupEntry[] = []
   for (const vendor of VENDOR_ORDER) {
-    const items = shoppingList
+    const vendorItems = shoppingList
       .filter(i => (i.vendor || '') === vendor)
       .sort((a, b) => a.name.localeCompare(b.name))
-    if (items.length > 0) groups.set(vendor || 'No Vendor', items)
+    if (!vendorItems.length) continue
+    const vendorLabel = vendor || 'No Vendor'
+    if (groupByShop && multiShop) {
+      for (let s = 1; s <= shopCount; s++) {
+        const shopItems = vendorItems.filter(i => (assignments[i._key] ?? 1) === s)
+        if (shopItems.length) groupEntries.push({ label: `${vendorLabel} — Run ${s}`, shopNum: s, items: shopItems })
+      }
+    } else {
+      groupEntries.push({ label: vendorLabel, items: vendorItems })
+    }
   }
 
   if (loading) return <div className="text-center py-16 text-stone-400">Loading...</div>
@@ -115,9 +126,19 @@ export default function ShoppingPage() {
             <p className="text-sm text-stone-500">{trip.name}</p>
           </div>
         </div>
-        <button onClick={() => window.print()} className="btn-secondary flex items-center gap-1.5">
-          <Printer className="w-4 h-4" /> Print
-        </button>
+        <div className="flex gap-2">
+          {multiShop && (
+            <button
+              onClick={() => setGroupByShop(v => !v)}
+              className={`btn-secondary flex items-center gap-1.5 text-sm ${groupByShop ? 'bg-forest-700 text-white border-forest-700' : ''}`}
+            >
+              <ShoppingCart className="w-4 h-4" /> {groupByShop ? 'By Shop #' : 'By Shop #'}
+            </button>
+          )}
+          <button onClick={() => window.print()} className="btn-secondary flex items-center gap-1.5">
+            <Printer className="w-4 h-4" /> Print
+          </button>
+        </div>
       </div>
 
       {/* Trip summary */}
@@ -148,10 +169,10 @@ export default function ShoppingPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {Array.from(groups.entries()).map(([group, items]) => (
-            <div key={group}>
+          {groupEntries.map(({ label, items }) => (
+            <div key={label}>
               <div className="flex items-center gap-3 mb-2">
-                <h2 className="font-semibold text-stone-800">{group}</h2>
+                <h2 className="font-semibold text-stone-800">{label}</h2>
                 <div className="flex-1 h-px bg-stone-200" />
                 <span className="text-xs text-stone-400">{items.length} items</span>
               </div>

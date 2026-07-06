@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Trip } from '@/lib/types'
-import { Plus, Users, Calendar, ChevronRight, Loader2 } from 'lucide-react'
+import { Plus, Users, Calendar, Loader2, UtensilsCrossed, ShoppingCart, Map, Camera } from 'lucide-react'
 import AuthGuard from '@/components/AuthGuard'
 
 export default function TripsPage() {
@@ -108,12 +108,18 @@ export default function TripsPage() {
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Link href={`/trips/${trip.id}/menu`} className="btn-primary flex items-center gap-1.5">
-                  Menu <ChevronRight className="w-4 h-4" />
+              <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
+                <Link href={`/trips/${trip.id}/menu`} className="btn-primary flex items-center gap-1.5 text-sm px-3 py-1.5">
+                  <UtensilsCrossed className="w-3.5 h-3.5" /> Menu
                 </Link>
-                <Link href={`/trips/${trip.id}/shopping`} className="btn-secondary text-xs px-3">
-                  Shopping List
+                <Link href={`/trips/${trip.id}/shopping`} className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5">
+                  <ShoppingCart className="w-3.5 h-3.5" /> Shopping
+                </Link>
+                <Link href={`/trips/${trip.id}/itinerary`} className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5">
+                  <Map className="w-3.5 h-3.5" /> Itinerary
+                </Link>
+                <Link href={`/trips/${trip.id}/photos`} className="btn-secondary flex items-center gap-1.5 text-sm px-3 py-1.5">
+                  <Camera className="w-3.5 h-3.5" /> Photos
                 </Link>
               </div>
             </div>

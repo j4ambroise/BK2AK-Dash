@@ -27,7 +27,7 @@ export default function Nav() {
   const items = [
     { href: '/photos', label: 'Photos', icon: Camera },
     { href: '/recipes', label: 'Recipes', icon: BookOpen },
-    { href: '/trips', label: 'Trips & Menus', icon: Map },
+    { href: '/trips', label: 'Trips', icon: Map },
   ]
 
   return (

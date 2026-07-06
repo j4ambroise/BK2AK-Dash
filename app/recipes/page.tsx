@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Recipe, MealType, MEAL_TYPES, MEAL_LABELS } from '@/lib/types'
-import { Plus, Search, ExternalLink, ChevronRight, Tag, Download } from 'lucide-react'
+import { Plus, Search, ExternalLink, ChevronRight, Tag } from 'lucide-react'
 import AuthGuard from '@/components/AuthGuard'
 
 const MEAL_COLORS: Record<MealType, string> = {
@@ -34,20 +34,6 @@ export default function RecipesPage() {
       })
   }, [])
 
-  async function downloadRecipes() {
-    const { data } = await supabase
-      .from('recipes')
-      .select('*, recipe_ingredients(*)')
-      .order('meal_type').order('name')
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `bk2ak-recipes-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   const filtered = recipes.filter(r => {
     const matchSearch = r.name.toLowerCase().includes(search.toLowerCase())
     const matchFilter = filter === 'all' || r.meal_type === filter
@@ -63,9 +49,6 @@ export default function RecipesPage() {
           <p className="text-sm text-stone-500 mt-1">{recipes.length} recipes</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={downloadRecipes} className="btn-secondary flex items-center gap-1.5">
-            <Download className="w-4 h-4" /> Download
-          </button>
           <Link href="/recipes/ingredients" className="btn-secondary flex items-center gap-1.5">
             <Tag className="w-4 h-4" /> Vendors
           </Link>
