@@ -1,49 +1,46 @@
 'use client'
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { User, Session } from '@supabase/supabase-js'
-import { supabase } from './supabase'
+
+interface FakeUser {
+  email: string
+}
 
 interface AuthContextType {
-  user: User | null
-  session: Session | null
+  user: FakeUser | null
   loading: boolean
-  signOut: () => Promise<void>
+  signOut: () => void
 }
 
 const AuthContext = createContext<AuthContextType>({
-  user: null, session: null, loading: true,
-  signOut: async () => {},
+  user: null,
+  loading: true,
+  signOut: () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
+  const [user, setUser] = useState<FakeUser | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-    })
-
-    return () => subscription.unsubscribe()
+    const stored = localStorage.getItem('bk2ak_user_email')
+    if (stored) setUser({ email: stored })
+    setLoading(false)
   }, [])
 
-  const signOut = async () => {
-    await supabase.auth.signOut()
+  function signOut() {
+    localStorage.removeItem('bk2ak_user_email')
+    setUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   )
+}
+
+export function signIn(email: string) {
+  localStorage.setItem('bk2ak_user_email', email)
 }
 
 export const useAuth = () => useContext(AuthContext)
