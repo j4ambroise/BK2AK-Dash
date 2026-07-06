@@ -173,7 +173,7 @@ export default function TripGearPage() {
           ))}
         </div>
 
-        <AlwaysPackReminder />
+        <AlwaysPackReminder enabled={trip.auto_pack !== false} />
       </div>
     </AuthGuard>
   )
@@ -210,23 +210,24 @@ function DateBar({ trip, range, onSave }: { trip: Trip; range: { start: string; 
   )
 }
 
-function AlwaysPackReminder() {
-  const [supplies, setSupplies] = useState<GearItem[]>([])
+function AlwaysPackReminder({ enabled }: { enabled: boolean }) {
+  const [packItems, setPackItems] = useState<GearItem[]>([])
   useEffect(() => {
-    supabase.from('gear_items').select('*, gear_variants(*)').eq('item_type', 'supply').eq('always_pack', true).order('sort_order')
-      .then(({ data }) => setSupplies((data ?? []) as GearItem[]))
-  }, [])
-  if (!supplies.length) return null
+    if (!enabled) return
+    supabase.from('gear_items').select('*, gear_variants(*)').eq('always_pack', true).order('sort_order')
+      .then(({ data }) => setPackItems((data ?? []) as GearItem[]))
+  }, [enabled])
+  if (!enabled || !packItems.length) return null
   return (
     <div className="mt-8">
       <div className="flex items-center gap-3 mb-3">
-        <h2 className="font-semibold text-stone-800 flex items-center gap-1.5"><Package className="w-4 h-4 text-stone-500" /> Always-pack supplies</h2>
+        <h2 className="font-semibold text-stone-800 flex items-center gap-1.5"><Package className="w-4 h-4 text-stone-500" /> Standard kit — always packed</h2>
         <div className="flex-1 h-px bg-stone-200" />
       </div>
       <div className="card p-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {supplies.map(s => {
+        {packItems.map(s => {
           const owned = (s.gear_variants ?? []).reduce((a, v) => a + v.quantity, 0)
-          const low = owned <= s.low_stock_threshold
+          const low = s.item_type === 'supply' && owned <= s.low_stock_threshold
           return (
             <div key={s.id} className="flex items-center gap-2 text-sm text-stone-600">
               <span className="w-1.5 h-1.5 rounded-full bg-forest-400 flex-shrink-0" />
@@ -236,7 +237,7 @@ function AlwaysPackReminder() {
           )
         })}
       </div>
-      <p className="text-xs text-stone-400 mt-2 print:hidden">Consumables aren&apos;t reserved — check stock and restock before departure.</p>
+      <p className="text-xs text-stone-400 mt-2 print:hidden">Auto-added because this trip has &ldquo;always-pack&rdquo; on. Supplies aren&apos;t reserved — check stock before departure.</p>
     </div>
   )
 }

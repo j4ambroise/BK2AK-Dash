@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Trip, Recipe, MenuItem, ItineraryItem, MealType, MEAL_TYPES, MEAL_LABELS } from '@/lib/types'
-import { ArrowLeft, ShoppingCart, Plus, X, Search, ClipboardList, ChevronDown, ChevronUp, Download, Map as MapIcon } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, Plus, X, Search, ClipboardList, ChevronDown, ChevronUp, Download, Map as MapIcon, Sandwich } from 'lucide-react'
 import TripStepper from '@/components/TripStepper'
 
 export default function MenuPage() {
@@ -87,6 +87,12 @@ export default function MenuPage() {
     setNotes(prev => { const n = { ...prev }; delete n[itemId]; return n })
   }
 
+  async function setStandardLunch(recipeId: string) {
+    await supabase.from('recipes').update({ is_standard_lunch: false }).eq('is_standard_lunch', true)
+    if (recipeId) await supabase.from('recipes').update({ is_standard_lunch: true }).eq('id', recipeId)
+    load()
+  }
+
   function updateNote(itemId: string, value: string) {
     setNotes(prev => ({ ...prev, [itemId]: value }))
     // Debounce save
@@ -138,7 +144,11 @@ export default function MenuPage() {
   if (!trip) return <div className="text-center py-16 text-stone-400">Trip not found.</div>
 
   const days = Array.from({ length: trip.num_days }, (_, i) => i + 1)
-  const activeMealTypes: MealType[] = ['breakfast', 'lunch', 'appetizer', 'dinner', 'dessert']
+  const autoLunch = trip.auto_lunch !== false
+  const standardLunch = recipes.find(r => r.is_standard_lunch)
+  const activeMealTypes: MealType[] = autoLunch
+    ? ['breakfast', 'appetizer', 'dinner', 'dessert']
+    : ['breakfast', 'lunch', 'appetizer', 'dinner', 'dessert']
 
   return (
     <div>
@@ -171,6 +181,30 @@ export default function MenuPage() {
       <div className="mb-6">
         <TripStepper tripId={id} current="menu" />
       </div>
+
+      {/* Auto-lunch note */}
+      {autoLunch && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <Sandwich className="w-5 h-5 text-amber-500 flex-shrink-0" />
+          <div className="flex-1 min-w-[180px] text-sm text-amber-900">
+            Lunch is auto-added for all <span className="font-semibold">{trip.num_days} days</span> and rolled into the shopping list — no need to pick it.
+            {!standardLunch && <span className="text-red-600 font-medium"> Set a standard lunch to enable this.</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={standardLunch?.id ?? ''}
+              onChange={e => setStandardLunch(e.target.value)}
+              className="input !py-1 text-sm max-w-[200px]"
+            >
+              <option value="">— none —</option>
+              {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+            {standardLunch && (
+              <Link href={`/recipes/${standardLunch.id}`} className="text-xs font-medium text-amber-700 hover:underline whitespace-nowrap">Edit lunch</Link>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Menu grid */}
       <div className="overflow-x-auto -mx-4 sm:mx-0">

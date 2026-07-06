@@ -21,6 +21,7 @@ export interface Recipe {
   source_url?: string
   notes?: string
   tags: string[]
+  is_standard_lunch?: boolean
   created_at: string
   recipe_ingredients?: Ingredient[]
 }
@@ -45,6 +46,8 @@ export interface Trip {
   num_shopping_trips: number
   start_date?: string
   end_date?: string
+  auto_pack?: boolean
+  auto_lunch?: boolean
   trip_notes?: string
   created_at: string
 }

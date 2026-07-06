@@ -3,8 +3,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Trip, MenuItem, ShoppingItem } from '@/lib/types'
-import { ArrowLeft, Printer, Users, Calendar, ShoppingCart } from 'lucide-react'
+import { Trip, MenuItem, Recipe, ShoppingItem } from '@/lib/types'
+import { ArrowLeft, Printer, Users, Calendar, ShoppingCart, Sandwich } from 'lucide-react'
 import TripStepper from '@/components/TripStepper'
 
 const VENDOR_ORDER = ['Costco', 'Fred Meyer', 'PoHo', 'Other', '']
@@ -22,21 +22,24 @@ export default function ShoppingPage() {
   const { id } = useParams<{ id: string }>()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [standardLunch, setStandardLunch] = useState<Recipe | null>(null)
   const [assignments, setAssignments] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [groupByShop, setGroupByShop] = useState(false)
 
   const load = useCallback(async () => {
-    const [tripRes, menuRes, assignRes] = await Promise.all([
+    const [tripRes, menuRes, assignRes, lunchRes] = await Promise.all([
       supabase.from('trips').select('*').eq('id', id).single(),
       supabase.from('menu_items')
         .select('*, recipe:recipes(*, recipe_ingredients(*))')
         .eq('trip_id', id)
         .order('day_number').order('meal_type'),
       supabase.from('shopping_trip_assignments').select('ingredient_key, shop_number').eq('trip_id', id),
+      supabase.from('recipes').select('*, recipe_ingredients(*)').eq('is_standard_lunch', true).maybeSingle(),
     ])
     setTrip(tripRes.data)
     setMenuItems(menuRes.data ?? [])
+    setStandardLunch((lunchRes.data as Recipe) ?? null)
     const map: Record<string, number> = {}
     for (const a of (assignRes.data ?? [])) map[a.ingredient_key] = a.shop_number
     setAssignments(map)
@@ -81,6 +84,32 @@ export default function ShoppingPage() {
         }
       }
     }
+
+    // Auto-lunch: standard lunch is served once per person per day, for every day of the trip.
+    const lunchIngredients = (standardLunch?.recipe_ingredients ?? [])
+    if (trip.auto_lunch !== false && lunchIngredients.length) {
+      const lunchScale = (trip.num_people / (standardLunch!.default_servings || 1)) * trip.num_days
+      const lunchLabel = `${standardLunch!.name} ×${trip.num_days} days`
+      for (const ing of lunchIngredients) {
+        const key = normalizeKey(ing.name, ing.unit)
+        const existing = itemMap.get(key)
+        if (existing) {
+          existing.total_qty += ing.quantity * lunchScale
+          if (!existing.recipes.includes(lunchLabel)) existing.recipes.push(lunchLabel)
+        } else {
+          itemMap.set(key, {
+            _key: key,
+            name: displayName(ing.name),
+            total_qty: ing.quantity * lunchScale,
+            unit: ing.unit.trim(),
+            vendor: ing.vendor || '',
+            shopping_note: ing.shopping_note || '',
+            recipes: [lunchLabel],
+          })
+        }
+      }
+    }
+
     return Array.from(itemMap.values())
   }
 
@@ -166,6 +195,19 @@ export default function ShoppingPage() {
           {shoppingList.length} items · {menuItems.length} meals planned
         </div>
       </div>
+
+      {trip.auto_lunch !== false && (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 flex items-center gap-2.5 text-sm print:hidden">
+          <Sandwich className="w-4 h-4 text-amber-500 flex-shrink-0" />
+          {standardLunch && (standardLunch.recipe_ingredients?.length ?? 0) > 0 ? (
+            <span className="text-amber-900">Includes <span className="font-semibold">{standardLunch.name}</span> for all {trip.num_days} days ({trip.num_people} people/day).</span>
+          ) : standardLunch ? (
+            <span className="text-red-700">Standard lunch <span className="font-semibold">{standardLunch.name}</span> has no ingredients yet — <Link href={`/recipes/${standardLunch.id}`} className="underline">add them</Link> to include lunch here.</span>
+          ) : (
+            <span className="text-red-700">No standard lunch set — pick one on the <Link href={`/trips/${id}/menu`} className="underline">Meals page</Link>.</span>
+          )}
+        </div>
+      )}
 
       {shoppingList.length === 0 ? (
         <div className="text-center py-12 text-stone-400">

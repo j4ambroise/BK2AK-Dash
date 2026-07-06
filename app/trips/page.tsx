@@ -12,7 +12,7 @@ export default function TripsPage() {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState({ name: '', num_people: 12, num_days: 14, num_shopping_trips: 1, start_date: '' })
+  const [form, setForm] = useState({ name: '', num_people: 12, num_days: 14, num_shopping_trips: 1, start_date: '', auto_pack: true, auto_lunch: true })
   const [saving, setSaving] = useState(false)
 
   async function load() {
@@ -41,6 +41,8 @@ export default function TripsPage() {
         num_shopping_trips: form.num_shopping_trips,
         start_date: form.start_date || null,
         end_date,
+        auto_pack: form.auto_pack,
+        auto_lunch: form.auto_lunch,
       })
       .select()
       .single()
@@ -96,6 +98,19 @@ export default function TripsPage() {
             </div>
           </div>
           <p className="text-xs text-stone-400 -mt-2 mb-4">Start date sets the trip&apos;s dates for gear conflict detection (end auto-fills from days; editable later).</p>
+
+          <div className="space-y-2 mb-4">
+            <label className="flex items-start gap-2 text-sm text-stone-600 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={form.auto_pack}
+                onChange={e => setForm(f => ({ ...f, auto_pack: e.target.checked }))} />
+              <span>Auto-add always-pack items <span className="text-stone-400">— standard gear &amp; supplies that go on every trip appear in this trip&apos;s gear list</span></span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-stone-600 cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={form.auto_lunch}
+                onChange={e => setForm(f => ({ ...f, auto_lunch: e.target.checked }))} />
+              <span>Auto-add standard lunch each day <span className="text-stone-400">— lunch isn&apos;t chosen; it&apos;s calculated into the shopping list for every day</span></span>
+            </label>
+          </div>
           <div className="flex gap-3">
             <button onClick={handleCreate} disabled={saving || !form.name.trim()} className="btn-primary flex items-center gap-2">
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
