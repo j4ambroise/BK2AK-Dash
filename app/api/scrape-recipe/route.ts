@@ -1,138 +1,173 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { fetchMondayItems, createMondayItem, updateMondayItem } from '@/lib/monday-client'
 
-function findRecipeSchema(data: unknown): Record<string, unknown> | null {
-  if (!data || typeof data !== 'object') return null
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      const found = findRecipeSchema(item)
-      if (found) return found
-    }
-    return null
-  }
-  const obj = data as Record<string, unknown>
-  const type = obj['@type']
-  if (type === 'Recipe' || (Array.isArray(type) && (type as string[]).includes('Recipe'))) return obj
-  if (obj['@graph']) return findRecipeSchema(obj['@graph'])
-  return null
-}
-
-const UNIT_LIST = [
-  'cups?', 'tbsps?', 'tablespoons?', 'tsps?', 'teaspoons?',
-  'oz', 'ounces?', 'lbs?', 'pounds?', 'grams?', 'g', 'kg',
-  'ml', 'liters?', 'l', 'cloves?', 'slices?', 'cans?',
-  'packages?', 'pkgs?', 'pinch(?:es)?', 'dashes?', 'handfuls?',
-  'pieces?', 'pints?', 'quarts?', 'gallons?', 'bunches?',
-  'stalks?', 'sprigs?', 'heads?', 'blocks?', 'bags?',
-]
-const UNIT_RE = new RegExp(
-  `^([\\d\\s/¼½¾⅓⅔⅛⅜⅝⅞.,-]+)\\s*(${UNIT_LIST.join('|')})\\.?\\s+(.+)$`,
-  'i'
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
-const QTY_RE = /^([\d\s/¼½¾⅓⅔⅛⅜⅝⅞.,-]+)\s+(.+)$/
 
-const UNICODE_FRACTIONS: Record<string, number> = {
-  '¼': 0.25, '½': 0.5, '¾': 0.75,
-  '⅓': 0.333, '⅔': 0.667,
-  '⅛': 0.125, '⅜': 0.375, '⅝': 0.625, '⅞': 0.875,
+interface TaskRow {
+  id: string
+  monday_item_id: string | null
+  title: string
+  status: string
+  priority: string
+  assignee: string | null
+  due_date: string | null
+  notes: string | null
+  updated_at: string
 }
 
-function parseFraction(str: string): number {
-  let s = str
-  for (const [k, v] of Object.entries(UNICODE_FRACTIONS)) s = s.replace(k, ` ${v}`)
-  let total = 0
-  for (const part of s.trim().split(/\s+/)) {
-    if (part.includes('/')) {
-      const [n, d] = part.split('/')
-      total += parseFloat(n) / parseFloat(d)
+// Pull latest from Monday and upsert into company_tasks.
+// Conflict rule: last-write-wins on updated_at — if the local row was edited
+// more recently than Monday's copy, keep the local version and re-push it to Monday.
+async function syncFromMonday() {
+  const mondayItems = await fetchMondayItems()
+
+  for (const item of mondayItems) {
+    const { data: existing } = await supabase
+      .from('company_tasks')
+      .select('*')
+      .eq('monday_item_id', item.monday_item_id)
+      .maybeSingle<TaskRow>()
+
+    if (!existing) {
+      await supabase.from('company_tasks').insert([
+        {
+          monday_item_id: item.monday_item_id,
+          title: item.title,
+          status: item.status,
+          priority: item.priority,
+          assignee: item.assignee,
+          due_date: item.due_date,
+          notes: item.notes,
+          last_synced_at: new Date().toISOString(),
+        },
+      ])
+      continue
+    }
+
+    const localUpdatedAt = new Date(existing.updated_at).getTime()
+    const mondayUpdatedAt = new Date(item.monday_updated_at).getTime()
+
+    if (mondayUpdatedAt >= localUpdatedAt) {
+      await supabase
+        .from('company_tasks')
+        .update({
+          title: item.title,
+          status: item.status,
+          priority: item.priority,
+          assignee: item.assignee,
+          due_date: item.due_date,
+          notes: item.notes,
+          last_synced_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
     } else {
-      total += parseFloat(part) || 0
+      await updateMondayItem(existing.monday_item_id!, {
+        status: existing.status,
+        priority: existing.priority,
+        dueDate: existing.due_date ?? undefined,
+        notes: existing.notes ?? undefined,
+      })
+      await supabase
+        .from('company_tasks')
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq('id', existing.id)
     }
   }
-  return total
 }
 
-function parseIngredient(raw: string, idx: number) {
-  const str = raw.replace(/<[^>]+>/g, '').trim()
-  const withUnit = str.match(UNIT_RE)
-  if (withUnit) {
-    return { name: withUnit[3].trim(), quantity: parseFraction(withUnit[1]), unit: withUnit[2].trim(), vendor: '', shopping_note: '', sort_order: idx }
+export async function GET() {
+  try {
+    await syncFromMonday()
+    const { data, error } = await supabase
+      .from('company_tasks')
+      .select('*')
+      .order('due_date', { ascending: true, nullsFirst: false })
+
+    if (error) throw error
+    return NextResponse.json(data)
+  } catch (err) {
+    console.error('company-tasks GET error:', err)
+    return NextResponse.json({ error: 'Failed to sync tasks' }, { status: 500 })
   }
-  const qtyOnly = str.match(QTY_RE)
-  if (qtyOnly) {
-    const qty = parseFraction(qtyOnly[1])
-    if (qty > 0) return { name: qtyOnly[2].trim(), quantity: qty, unit: '', vendor: '', shopping_note: '', sort_order: idx }
-  }
-  return { name: str, quantity: 0, unit: '', vendor: '', shopping_note: '', sort_order: idx }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json()
-    if (!url) return NextResponse.json({ error: 'URL required' }, { status: 400 })
+    const { title, status = 'Not Started', priority = 'Low', due_date, notes } = await req.json()
 
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      signal: AbortSignal.timeout(10000),
-    })
-    if (!res.ok) return NextResponse.json({ error: `Could not fetch that page (${res.status})` }, { status: 400 })
-
-    const html = await res.text()
-    const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-    const blocks: RegExpExecArray[] = []
-    let m: RegExpExecArray | null
-    while ((m = re.exec(html)) !== null) blocks.push(m)
-
-    let recipe: Record<string, unknown> | null = null
-    for (const block of blocks) {
-      try {
-        recipe = findRecipeSchema(JSON.parse(block[1]))
-        if (recipe) break
-      } catch { /* malformed JSON-LD, skip */ }
+    if (!title || !String(title).trim()) {
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 })
     }
 
-    if (!recipe) {
-      return NextResponse.json({ error: 'No recipe data found on this page. Try adding it manually.' }, { status: 404 })
-    }
+    const mondayItemId = await createMondayItem({ title, status, priority, dueDate: due_date, notes })
 
-    // Servings
-    let servings = 12
-    const yieldRaw = recipe.recipeYield
-    if (yieldRaw) {
-      const s = Array.isArray(yieldRaw) ? String(yieldRaw[0]) : String(yieldRaw)
-      const n = parseInt(s)
-      if (!isNaN(n) && n > 0) servings = n
-    }
+    const { data, error } = await supabase
+      .from('company_tasks')
+      .insert([
+        {
+          monday_item_id: String(mondayItemId),
+          title,
+          status,
+          priority,
+          due_date: due_date || null,
+          notes: notes || null,
+          last_synced_at: new Date().toISOString(),
+        },
+      ])
+      .select()
+      .single()
 
-    // Ingredients
-    const rawIngredients: string[] = Array.isArray(recipe.recipeIngredient) ? recipe.recipeIngredient as string[] : []
-    const ingredients = rawIngredients.map((s, i) => parseIngredient(s, i))
-
-    // Instructions → notes
-    let notes = ''
-    const instr = recipe.recipeInstructions
-    if (Array.isArray(instr)) {
-      notes = (instr as unknown[]).map(i => {
-        if (typeof i === 'string') return i
-        if (i && typeof i === 'object') return (i as Record<string, unknown>).text ?? ''
-        return ''
-      }).filter(Boolean).join('\n\n')
-    } else if (typeof instr === 'string') {
-      notes = instr
-    }
-
-    return NextResponse.json({
-      name: String(recipe.name ?? ''),
-      description: String(recipe.description ?? ''),
-      servings,
-      ingredients,
-      notes,
-      source_url: url,
-    })
+    if (error) throw error
+    return NextResponse.json(data, { status: 201 })
   } catch (err) {
-    console.error('Scrape error:', err)
-    return NextResponse.json({ error: 'Failed to scrape recipe' }, { status: 500 })
+    console.error('company-tasks POST error:', err)
+    return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+    const updates = await req.json()
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('company_tasks')
+      .select('*')
+      .eq('id', id)
+      .single<TaskRow>()
+    if (fetchError) throw fetchError
+
+    const { data, error } = await supabase
+      .from('company_tasks')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw error
+
+    if (existing.monday_item_id) {
+      await updateMondayItem(existing.monday_item_id, {
+        status: updates.status ?? existing.status,
+        priority: updates.priority ?? existing.priority,
+        dueDate: updates.due_date ?? existing.due_date ?? undefined,
+        notes: updates.notes ?? existing.notes ?? undefined,
+      })
+      await supabase
+        .from('company_tasks')
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq('id', id)
+    }
+
+    return NextResponse.json(data)
+  } catch (err) {
+    console.error('company-tasks PATCH error:', err)
+    return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })
   }
 }
