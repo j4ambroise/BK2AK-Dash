@@ -5,10 +5,10 @@ import { useState, useEffect, useCallback } from 'react'
 interface Grant {
   id: string
   title: string
-  agencyName: string
+  agency: string
   closeDate: string
   oppStatus: string
-  alnist?: string[]
+  aln?: string[]
   fitScore: number
   fitBucket: 'High' | 'Medium' | 'Low'
   reasons: string[]
@@ -136,8 +136,8 @@ export default function CompanyGrantsTab() {
                     {g.title}
                   </a>
                   <div className="mt-0.5 text-xs text-stone-500">
-                    {g.agencyName}
-                    {g.alnist?.length ? ` · ALN ${g.alnist.join(', ')}` : ''}
+                    {g.agency}
+                    {g.aln?.length ? ` · ALN ${g.aln.join(', ')}` : ''}
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">

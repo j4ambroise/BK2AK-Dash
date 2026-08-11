@@ -7,8 +7,8 @@ export const revalidate = 0
 // server-side (browsers/agents can't reach it directly). This route fans out a
 // curated set of BK2AK-relevant queries, dedupes, scores each opportunity for
 // fit with BK2AK's program (youth + outdoor access + BIPOC + workforce), drops
-// obvious land/infrastructure grants a program nonprofit can't use, and returns
-// a ranked shortlist. Eligibility is heuristic here — the detail page is the
+// land/infrastructure grants a program nonprofit can't use, and returns a
+// ranked shortlist. Fit is title-based and heuristic — the detail page is the
 // source of truth, and the weekly agent does the deeper 501(c)(3) check before
 // anything lands on the Monday board.
 
@@ -26,20 +26,32 @@ const QUERIES = [
   'national parks youth',
 ]
 
+// Raw Search2 hit. NOTE: the live API returns `agency` + `cfdaList`; the
+// published docs show `agencyName` + `alnist`. We read whichever is present.
 interface Search2Hit {
   id: string
   number: string
   title: string
-  agencyCode: string
-  agencyName: string
-  openDate: string
-  closeDate: string
-  oppStatus: string
-  docType: string
+  agencyCode?: string
+  agency?: string
+  agencyName?: string
+  openDate?: string
+  closeDate?: string
+  oppStatus?: string
+  docType?: string
+  cfdaList?: string[]
   alnist?: string[]
 }
 
-interface ScoredGrant extends Search2Hit {
+interface ScoredGrant {
+  id: string
+  number: string
+  title: string
+  agency: string
+  agencyCode: string
+  closeDate: string
+  oppStatus: string
+  aln: string[]
   fitScore: number
   fitBucket: 'High' | 'Medium' | 'Low'
   reasons: string[]
@@ -48,7 +60,6 @@ interface ScoredGrant extends Search2Hit {
   detailUrl: string
 }
 
-// [regex, points, human-readable reason]
 const THEME_SIGNALS: [RegExp, number, string][] = [
   [/\b(youth|teen|teenager|young people|adolescent|k-12|high school)\b/i, 20, 'Youth-focused'],
   [/\b(outdoor|wilderness|backcountry|public lands|trail-based)\b/i, 15, 'Outdoor / wilderness'],
@@ -73,16 +84,36 @@ const AGENCY_SIGNALS: [RegExp, number, string][] = [
 // Signals that a grant funds land/facilities/construction — a program nonprofit
 // like BK2AK generally can't use these (they fund states, cities, land owners).
 const INFRA_SIGNALS: [RegExp, number, string][] = [
-  [/\b(acquisition|acquire land|land and water conservation)\b/i, 26, 'Land acquisition'],
-  [/\b(construction|constructing|build(ing)? of|infrastructure|facilit(y|ies)|renovation|rehabilitation of|development of park|capital improvement)\b/i, 22, 'Capital / construction'],
+  [/\b(acquisition|acquire land)\b/i, 26, 'Land acquisition'],
+  [/(land and water conservation|legacy partnership|recreational trails program|outdoor recreation.*(acquisition|development))/i, 28, 'Land/parks capital program (state pass-through)'],
+  [/\b(construction|constructing|building of|infrastructure|facilit(y|ies)|renovation|rehabilitation of|capital improvement|development of park)\b/i, 22, 'Capital / construction'],
   [/\b(trail (construction|development|building)|boat ramp|campground|playground)\b/i, 20, 'Facility build-out'],
   [/\b(research|fellowship|dissertation|principal investigator|university|postdoctoral)\b/i, 12, 'Academic / research grant'],
   [/\b(state (agency|government) only|units of government only|tribal governments only)\b/i, 30, 'Government-only eligibility'],
 ]
 
+// Known federal ALNs that are land/infrastructure or state-formula pass-through
+// (BK2AK, a program nonprofit, cannot apply directly).
+const INFRA_ALNS = new Set(['15.916', '15.919'])
+
+function cleanText(s: string | undefined): string {
+  if (!s) return ''
+  return s
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function scoreHit(hit: Search2Hit): ScoredGrant {
-  const title = hit.title || ''
-  const agencyBlob = `${hit.agencyName || ''} ${hit.agencyCode || ''}`
+  const title = cleanText(hit.title)
+  const agency = cleanText(hit.agency ?? hit.agencyName)
+  const agencyCode = hit.agencyCode ?? ''
+  const aln = hit.cfdaList ?? hit.alnist ?? []
+  const agencyBlob = `${agency} ${agencyCode}`
   const reasons: string[] = []
   const flags: string[] = []
   let score = 0
@@ -107,6 +138,10 @@ function scoreHit(hit: Search2Hit): ScoredGrant {
       flags.push(label)
     }
   }
+  if (aln.some((a) => INFRA_ALNS.has(a))) {
+    infraPenalty += 28
+    flags.push('Land/infrastructure program (by ALN)')
+  }
   score -= infraPenalty
 
   const clamped = Math.max(0, Math.min(100, score))
@@ -116,14 +151,21 @@ function scoreHit(hit: Search2Hit): ScoredGrant {
   else if (clamped >= 32) bucket = 'Medium'
   else bucket = 'Low'
 
-  // Strong infrastructure/government-only signal with weak program signal → force Low.
+  // Strong infra/government-only signal with weak program signal → force Low.
   if (infraPenalty >= 22 && clamped < 45) {
     bucket = 'Low'
     if (!flags.includes('Likely program-ineligible')) flags.push('Likely program-ineligible')
   }
 
   return {
-    ...hit,
+    id: hit.id,
+    number: hit.number,
+    title,
+    agency,
+    agencyCode,
+    closeDate: hit.closeDate ?? '',
+    oppStatus: hit.oppStatus ?? '',
+    aln,
     fitScore: clamped,
     fitBucket: bucket,
     reasons,
@@ -133,7 +175,7 @@ function scoreHit(hit: Search2Hit): ScoredGrant {
   }
 }
 
-function daysUntil(mmddyyyy: string): number | null {
+function daysUntil(mmddyyyy: string | undefined): number | null {
   if (!mmddyyyy) return null
   const parts = mmddyyyy.split('/')
   if (parts.length !== 3) return null
@@ -188,7 +230,6 @@ export async function GET(req: NextRequest) {
       .filter((g) => rankOf[g.fitBucket] >= rankOf[minBucket])
       .sort((a, b) => {
         if (b.fitScore !== a.fitScore) return b.fitScore - a.fitScore
-        // then soonest real deadline first
         const ad = a.daysToDeadline ?? 9999
         const bd = b.daysToDeadline ?? 9999
         return ad - bd
